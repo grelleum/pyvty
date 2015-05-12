@@ -160,26 +160,9 @@ def determine_protocol(host, protocol=None, port=None):
         elif tcp_is_open(host, 23):
             port, protocol = (23, 'telnet')
     return (protocol, port)
-    
-
-"""
-
-import pyvty
-
-ip = '172.18.0.33'
-ip = '172.17.0.170'
-
-#term = pyvty.Terminal(host=ip, port=22, protocol='ssh', username='admin', password='cisco')
-term = pyvty.Terminal(host=ip, username='admin', password='cisco')
-for line in term.send("show version").splitlines(): print(line)
-
-term.terminal._write("exit\n")
-term.terminal._close()
 
 
-"""
-
-class Terminal():
+class Terminal(object):
     """Provides common methods to access a terminal using multiple protocols.
 
     Provides common methods to child classes.
@@ -547,7 +530,7 @@ class Terminal():
         return False
 
 
-class SSH():
+class SSH(object):
     """Uses SSH protocol to access network device terminal."""
 
     # Should add all SSHclient options here as modified defaults
@@ -617,54 +600,40 @@ class SSH():
             return False
 
 
-class Telnet():
+class Telnet(object):
     """Uses Telnet protocol to access network device terminal."""
 
     def __init__(self, host, **kwargs):
         self.debug = kwargs.get('debug', 0)
         debug_display_info(debug=self.debug)
-        self.terminal_exceptions = (socket.timeout, socket.error)
         try:
             port = int(kwargs['port'])
             username = kwargs['username']
             password = kwargs['password']
-        except KeyError as exception:
-            print('Missing required argument: {}'.format(exception), file=sys.stderr)
-        debug_display_info(debug=self.debug,
-            message="Telnet to host {0} : {1}".format(host, port))
-        try:
+            debug_display_info(debug=self.debug,
+                message="Telnet to host {0} : {1}".format(host, port))
             self.terminal = telnetlib.Telnet(host, port)
-        except self.terminal_exceptions as terminal_exception:
-            print("close---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
-            return None
+        except KeyError as exception:
+            raise KeyError('Missing required argument: {}'.format(exception))
 
     def _close(self):
         """Properly close connection to network device."""
         debug_display_info(debug=self.debug)
         try:
             self.terminal.close()
-            return True
-        except self.terminal_exceptions as terminal_exception:
-            print("close---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
+        except exceptions as exception:
+            debug_display_info(debug=self.debug,
+                message="close---exception: {0}".format(exception))
             return False
 
     def _read(self):
         """Internal method to get output from Telnet session."""
         debug_display_info(debug=self.debug)
-        try:
-            read_buffer = self.terminal.read_very_eager()
-            return read_buffer.decode()
-        except self.terminal_exceptions as terminal_exception:
-            print("read---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
-            return str(terminal_exception)
+        read_buffer = self.terminal.read_very_eager()
+        return read_buffer.decode()
 
     def _write(self, text):
         """Internal method to send string to Telnet session."""
         debug_display_info(debug=self.debug)
-        try:
-            self.terminal.write(text.encode())
-            return True
-        except self.terminal_exceptions as terminal_exception:
-            print("send---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
-            return False
-
+        self.terminal.write(text.encode())
+        return True
