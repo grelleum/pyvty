@@ -11,7 +11,7 @@ from __future__ import unicode_literals
 
 import getpass      # handles silent password prompt
 import inspect      # introspection so fuctions can know their name debug mode
-import ipaddress    # used for validating ip addresses
+#import ipaddress    # used for validating ip addresses
 import paramiko     # ssh library
 import re           # regular expressions
 import socket       # used to test open tcp ports
@@ -80,7 +80,6 @@ def get_username(username=None):
 
 
 def get_password(password=None):
-    #verify = False
     while not password:
         verify = False
         while password != verify:
