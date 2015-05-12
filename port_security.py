@@ -6,6 +6,18 @@ import sys
 import time
 import pyvty
 
+usage = """
+/// EARLY DEMO - DOES NOT APPLY CONFIGURATION ///
+
+This script applies port-security configuration to access ports.
+
+Will Prompt once for username and twice for password.
+Assumes all switches will have same login credentials.
+
+Specify each host in a file.  Provide filename at runtime.
+
+"""
+
 port_security = """
 switchport port-security
 switchport port-security maximum 3
@@ -13,13 +25,14 @@ switchport port-security violation restrict
 switchport port-security mac-address sticky
 """.strip().splitlines()
 
-user = pyvty.get_username()
-password = pyvty.get_password()
-
 
 def FAKE_CONFIG(text):
-    print('[FAKE_CONFIG] ', end='')
-    print(text)
+    print('[FAKE_CONFIG] {0}'.format(text))
+
+
+print(usage)
+user = pyvty.get_username()
+password = pyvty.get_password()
 
 for host in fileinput.input():
     try:
@@ -62,7 +75,9 @@ for host in fileinput.input():
         for interface in interfaces:
             FAKE_CONFIG('interface {0}'.format(interface))
             for line in port_security:
-                FAKE_CONFIG("config term")
+                FAKE_CONFIG(line)
+            FAKE_CONFIG('exit')
+            FAKE_CONFIG('!')
         FAKE_CONFIG("end")
         FAKE_CONFIG("write mem")
 
