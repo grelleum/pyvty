@@ -16,6 +16,11 @@ switchport port-security mac-address sticky
 user = pyvty.get_username()
 password = pyvty.get_password()
 
+
+def FAKE_CONFIG(text):
+    print('[FAKE_CONFIG] ', end='')
+    print(text)
+
 for host in fileinput.input():
     try:
         host = host.strip()
@@ -52,7 +57,14 @@ for host in fileinput.input():
                     if interface in interfaces:
                         interfaces.remove(interface)
 
-        print(interfaces)
+        # Apply configuration to ports.  ### ONLY PRINTING TO SCREEN  ###
+        FAKE_CONFIG("config term")
+        for interface in interfaces:
+            FAKE_CONFIG('interface {0}'.format(interface))
+            for line in port_security:
+                FAKE_CONFIG("config term")
+        FAKE_CONFIG("end")
+        FAKE_CONFIG("write mem")
 
         term.close()
         
