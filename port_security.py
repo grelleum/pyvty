@@ -6,7 +6,7 @@ import sys
 import time
 import pyvty
 
-usage = """
+usage = '''
 /// EARLY DEMO - DOES NOT APPLY CONFIGURATION ///
 
 This script applies port-security configuration to access ports.
@@ -16,14 +16,16 @@ Assumes all switches will have same login credentials.
 
 Specify each host in a file.  Provide filename at runtime.
 
-"""
+'''
 
-port_security = """
+version = '0.02'
+
+port_security = '''
 switchport port-security
 switchport port-security maximum 3
 switchport port-security violation restrict
 switchport port-security mac-address sticky
-""".strip().splitlines()
+'''.strip().splitlines()
 
 
 def FAKE_CONFIG(text):
@@ -39,6 +41,7 @@ for host in fileinput.input():
         host = host.strip()
         if host == '' or host.startswith('#'):
             continue
+        blacklist = dict()
         interfaces = list()
         
         print('\n{0}'.format('='*80))
@@ -47,18 +50,21 @@ for host in fileinput.input():
 
         # Gather interfaces.
         interface = None
-        for line in term.send("show run all").splitlines():
+        for line in term.send('show run all'):
             if line.startswith('interface '):
                 interface = line.split(' ')[1]
             elif 'switchport access vlan' in line:
                 if interface is not None:
                     interfaces.append(interface)
+            elif 'switchport mode trunk' in line:
+                if interface is not None:
+                    blacklist[interface] = 'switchport mode trunk'
             elif not line.startswith(' '):
                 interface = None                
 
         # Gather CDP neighbors.
         route_switch = False
-        for line in term.send("show cdp neighbor detail").splitlines():
+        for line in term.send('show cdp neighbor detail'):
             if 'Capabilities:' in line:
                 if 'Router' in line or 'Switch' in line:
                     route_switch = True
@@ -67,19 +73,27 @@ for host in fileinput.input():
             elif line.startswith('Interface:'):
                 if route_switch:
                     interface = line.split()[1].rstrip(',')
-                    if interface in interfaces:
-                        interfaces.remove(interface)
+                    blacklist[interface] = 'cdp neighbor'
+
+        # Remove and report blacklisted interfaces
+        print('!')
+        for interface in sorted(blacklist):
+            print('! Skipping Interface: {0}, Reason: {1}'.format(
+                interface, blacklist[interface]))
+            if interface in interfaces:
+                interfaces.remove(interface)
+        print('!')
 
         # Apply configuration to ports.  ### ONLY PRINTING TO SCREEN  ###
-        FAKE_CONFIG("config term")
+        FAKE_CONFIG('config term')
         for interface in interfaces:
             FAKE_CONFIG('interface {0}'.format(interface))
             for line in port_security:
                 FAKE_CONFIG(line)
             FAKE_CONFIG('exit')
             FAKE_CONFIG('!')
-        FAKE_CONFIG("end")
-        FAKE_CONFIG("write mem")
+        FAKE_CONFIG('end')
+        FAKE_CONFIG('write mem')
 
         term.close()
         
