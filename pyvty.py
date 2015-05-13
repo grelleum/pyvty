@@ -435,7 +435,7 @@ class Terminal(object):
     def send(self, command, prompt=None, timeout=None):
         """Sends a command to the terminal and waits for the prompt to return.
         
-        Returns a string of output from the terminal.
+        Returns a list of output from the terminal.
         Optional prompt specifies the an expected prompt in regex format.
         Optional timeout specifies time in seconds to wait for the prompt.
         Object.last_regex_match is assigned the string matching the prompt.
@@ -450,7 +450,7 @@ class Terminal(object):
         if not command == '':
             result = self.read_until(command, timeout=3)
         result += self.read_until_regex(prompt, timeout)
-        return result
+        return result.splitlines()
 
     def send_config(self, command, prompt=None):
         """Accepts configurations commands. 
