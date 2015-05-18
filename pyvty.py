@@ -9,9 +9,9 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import datetime
 import getpass      # handles silent password prompt
 import inspect      # introspection so fuctions can know their name debug mode
-#import ipaddress    # used for validating ip addresses
 import paramiko     # ssh library
 import re           # regular expressions
 import socket       # used to test open tcp ports
@@ -66,6 +66,18 @@ def debug_display_info(debug=0, message=None):
             print(line, file=sys.stderr)
 
 
+def dual_print(*args, **kwargs):
+    '''Prints to screen and to file.
+    Specify a file handle using 'file=filehandle'.
+    '''
+    if 'file' in kwargs:
+        if kwargs['file'] is not None:
+            print(*args, **kwargs)
+            kwargs['file'].flush()
+            del kwargs['file']
+    print(*args, **kwargs)
+
+
 def get_username(username=None):
     if username is None:
         local_user = getpass.getuser()
@@ -90,6 +102,11 @@ def get_password(password=None):
     return password
 
 
+def iface_short_name(interface):
+    iface_regex = re.compile(r'^[A-Z][a-z]|[0-9][[0-9\-\:\.\/]*$')
+    return ''.join(iface_regex.findall(interface))
+
+
 def tcp_is_open(ip, tcp_port):
     global debug_level
     debug_display_info(debug=debug_level)
@@ -105,6 +122,14 @@ def tcp_is_open(ip, tcp_port):
     except:
         debug_display_info(debug=debug_level, message='returns False')
         return False
+
+
+def timestamp():
+    return str(datetime.datetime.fromtimestamp(time.time()))
+
+
+def filestamp():
+    return timestamp().split('.')[0].replace(' ', '_').replace(':', '.')
 
 
 def validate_host(host):
@@ -195,6 +220,11 @@ class Terminal(object):
         self.connect()
 
     def __iter__(self):
+        """Not really sure this class need to be iterable.
+        It was a good coding excercise, might have added some complexity 
+        to the update buffer method in the fine-tuning delays 
+        and trying to detect when no more buffer will be sent.
+        """
         return self
 
     def __next__(self):
@@ -211,8 +241,6 @@ class Terminal(object):
         self.prompt = r'^\w[\w\(\)\-\:\.]+ ?[\>\$\#\%] ?$'
         self.logfile = self.kwargs.get('logfile', None)
         self.last_regex_match = u''
-        self._config_write = True
-        self._config_mode = False
         self.disable_paging = u'terminal length 0'
         self.send_delay = 0.1
         self.read_delay = 0.002
@@ -223,8 +251,8 @@ class Terminal(object):
             paramiko.BadHostKeyException,
             paramiko.AuthenticationException,
             paramiko.SSHException,
+            UserWarning,
             )
-
 
     def connect(self, **kwargs):
         # check kwargs - is this called by user or class ??
@@ -421,25 +449,32 @@ class Terminal(object):
         self.flush_buffer()
         return output
 
-    def write(self, text, end='\n'):
+    def write(self, text, end='\n', send=True):
         """Sends string to terminal with trailing newline.
         
         To prevent trailing newline, include end='' as a keywork argument.
         """
+        if not send:
+            return '[SEND=FALSE] {0}'.format(command)
         debug_display_info(debug=self.debug)
         debug_display_info(debug=self.debug, message='WRITE: {0}'.format(text))
         result = self.terminal._write(text + end)
         time.sleep(self.send_delay)
         return result
 
-    def send(self, command, prompt=None, timeout=None):
+    def send(self, command, prompt=None, timeout=None, send=True):
         """Sends a command to the terminal and waits for the prompt to return.
         
-        Returns a list of output from the terminal.
+        Returns a string of output from the terminal.
+        To receive back a list use " terminal.send('xyz').splitlines() "
         Optional prompt specifies the an expected prompt in regex format.
-        Optional timeout specifies time in seconds to wait for the prompt.
         Object.last_regex_match is assigned the string matching the prompt.
+        Optional timeout specifies time in seconds to wait for the prompt.
+        Optional send=False prevents the string from being sent.  This is
+        useful when you want to verify what will be sent before sending.
         """
+        if not send:
+            return '[SEND=FALSE] {0}'.format(command)
         if prompt is None:
             prompt = self.prompt
         if timeout is None:
@@ -450,55 +485,7 @@ class Terminal(object):
         if not command == '':
             result = self.read_until(command, timeout=3)
         result += self.read_until_regex(prompt, timeout)
-        return result.splitlines()
-
-    def send_config(self, command, prompt=None):
-        """Accepts configurations commands. 
-        
-        This method is intended for situations where we are dynamically
-        creating configuration commands and want to perform a 'dry run'
-        to see that the script is generating the correct commands before
-        commiting the changes to the device.
-        This method enters configuration mode only if config_write == True.
-        Use object.allow_configuration() to allow configurations.
-        Method checks self.last_regex_match for r'(config' to see if device
-        is in configure mode.
-        If self.config_write == False, returns only the commands without
-        sending to terminal.
-        """
-        if prompt is None:
-            prompt = self.prompt
-        debug_display_info(debug=self.debug)
-        result = u''
-        if self._config_write:
-            if not self._config_mode:
-                result += self.send('configure terminal')
-                self._config_mode = True
-            result += self.send(command, prompt=prompt+'|\n$')
-        else:
-            if not self._config_mode:
-                self._config_mode = True
-                result += '\n#'
-                result += '\n# Configuration not being sent to device'
-                result += '\n# Displaying configuration commands for review'
-                result += '\n# Use allow_configuration() method to allow write'
-                result += '\n#'
-                result += '\n# configure terminal\n'
-            result += '# ' + command + '\n'
         return result
-
-    def allow_configuration(self, permission=True):
-        """Call this method to allow the configure method to write to device.
-        
-        By default, the configure command will not actually write changes
-        to the device.  Calling object.allow_configuration() is required
-        to make changes via the configure method.  Calling 
-        object.allow_configuration(False) will disable wite access.
-        """
-        if permission:
-            self._config_write = True
-        else:
-            self._config_write = False
 
     def set_logging(self, filename, mode=None):
         """Set logfile to capture terminal input and output
@@ -517,12 +504,14 @@ class Terminal(object):
             with open(filename, mode) as logfile:
                 self.logfile = filename
 
-    def write_log(self, output, prefix='#[user]# '):
+    def write_log(self, output, prefix=None):
         """Writes string to the current logging file if logging is enabled
         
         Accepts a string.
         Used internally, but useful for inserting debug comments.
         """
+        if prefix is None:
+            prefix = str(datetime.datetime.fromtimestamp(time.time()))
         if self.logfile:
             with open(self.logfile, 'a') as logfile:
                 logfile.write(prefix + output)
@@ -537,6 +526,9 @@ class SSH(object):
     # so that they can be modified by user prior to calling login.
     # Must consider possibility that Linuxer based NOS devices might support
     # identity files, and provide a way to specify that to this object.
+    
+    # TODO: Remove exception handling - exceptions should be handled 
+    # by the library user.
     def __init__(self, host, **kwargs):
         self.debug = kwargs.get('debug', 0)
         debug_display_info(debug=self.debug)
