@@ -9,7 +9,7 @@ import time
 import pyvty
 from pyvty import dual_print
 
-VERSION = '0.10'
+VERSION = '0.11'
 
 usage = '''
 This script applies port-security configuration to access ports.
@@ -67,7 +67,7 @@ for host in fileinput.input(filelist):
 
         # Gather interfaces.
         interface = None
-        for line in term.send('show run | i ^interface|switchport').splitlines():
+        for line in term.send('show run | i ^interface|switchport'):
             if line.startswith('interface '):
                 interface = line.split(' ')[1]
                 interfaces[interface] = "No 'switchport mode access' found"
@@ -89,7 +89,7 @@ for host in fileinput.input(filelist):
         for interface in interfaces:
             mac_count = 0
             show_macs = 'show mac add interface {0}'.format(interface)
-            for line in term.send(show_macs).splitlines():
+            for line in term.send(show_macs):
                 if mac_addr_re.search(line):
                     mac_count += 1
             if int(mac_count) > 3:
@@ -97,7 +97,7 @@ for host in fileinput.input(filelist):
 
         # Gather CDP neighbors.
         route_switch = False
-        for line in term.send('show cdp neighbor detail').splitlines():
+        for line in term.send('show cdp neighbor detail'):
             if 'Capabilities:' in line:
                 if 'Router' in line or 'Switch' in line:
                     route_switch = True

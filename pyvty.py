@@ -474,18 +474,19 @@ class Terminal(object):
         useful when you want to verify what will be sent before sending.
         """
         if not send:
-            return '[SEND=FALSE] {0}'.format(command)
-        if prompt is None:
-            prompt = self.prompt
-        if timeout is None:
-            timeout = self.timeout
-        debug_display_info(debug=self.debug)
-        self.write(command)
-        result = u''
-        if not command == '':
-            result = self.read_until(command, timeout=3)
-        result += self.read_until_regex(prompt, timeout)
-        return result
+            result = '[SEND=FALSE] {0}'.format(command)
+        else:
+            if prompt is None:
+                prompt = self.prompt
+            if timeout is None:
+                timeout = self.timeout
+            debug_display_info(debug=self.debug)
+            self.write(command)
+            result = u''
+            if not command == '':
+                result = self.read_until(command, timeout=3)
+            result += self.read_until_regex(prompt, timeout)
+        return result.splitlines()
 
     def set_logging(self, filename, mode=None):
         """Set logfile to capture terminal input and output
