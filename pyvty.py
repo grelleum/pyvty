@@ -238,7 +238,7 @@ class Terminal(object):
         self.data_buffer = u''
         self.last_regex_match = u''
         self.timeout = 20
-        self.prompt = r'^\w[\w\(\)\-\:\.]+ ?[\>\$\#\%] ?$'
+        self.prompt = r'[\r\n](\w[\w\-\:\.]+ ?(\(\w[\w\-\:\.]+\) )?[\>\$\#\%] ?)$'
         self.logfile = self.kwargs.get('logfile', None)
         self.last_regex_match = u''
         self.disable_paging = u'terminal length 0'
@@ -438,13 +438,15 @@ class Terminal(object):
             regex_match = regex.search(self.data_buffer)
             if regex_match:
                 self.last_regex_match = regex_match.group()
-                (output, post_match) = regex.split(self.data_buffer, 1)
+                split_up = regex.split(self.data_buffer, 1)
+                (output, post_match) = split_up[0], split_up[-1]
                 self.data_buffer = self.last_regex_match + post_match
                 return output
             else:
                 time.sleep(0.1)
         # Reached timeout at this point: should I raise an exception?
         # Should I overwrite self.last_regex_match? 
+        print('%%% Timed out after {0} seconds.'.format(timeout), file=sys.stderr)
         output = self.data_buffer
         self.flush_buffer()
         return output
@@ -473,6 +475,8 @@ class Terminal(object):
         Optional send=False prevents the string from being sent.  This is
         useful when you want to verify what will be sent before sending.
         """
+        # FIX ME : should return immediately upon exception:
+        #           send---exception: Socket is closed
         if not send:
             result = '[SEND=FALSE] {0}'.format(command)
         else:
@@ -484,7 +488,7 @@ class Terminal(object):
             self.write(command)
             result = u''
             if not command == '':
-                result = self.read_until(command, timeout=3)
+                result = self.read_until(command[0:20], timeout=3)
             result += self.read_until_regex(prompt, timeout)
         return result.splitlines()
 
@@ -630,3 +634,21 @@ class Telnet(object):
         debug_display_info(debug=self.debug)
         self.terminal.write(text.encode())
         return True
+
+
+
+def send(command, prompt=None, timeout=None, send=True):
+    if prompt is None:
+        prompt = term.prompt
+    if timeout is None:
+        timeout = term.timeout
+    term.write(command)
+    result = u''
+    if not command == '':
+        mycopy = command
+        if '"' in command:
+            mycopy = command.split('"')[0]
+        result = term.read_until(mycopy, timeout=3)
+    result += term.read_until_regex(prompt, timeout)
+    return result.splitlines()
+
