@@ -241,7 +241,7 @@ class Terminal(object):
         self.banner = False
         self.prompt_matched = False
         self.timeout = 20
-        self.prompt = r'[\r\n](\w[\w\-\:\.]+ ?(\(\w[\w\-\:\.]+\) )?[\>\$\#\%] ?)$'
+        self.prompt = r'[\r\n](\w[\w\-\:\.]+ ?(\(\w[\w\-\:\.]+\) ?)?[\>\$\#\%] ?)$'
         self.logfile = self.kwargs.get('logfile', None)
         self.last_regex_match = u''
         self.disable_paging = u'terminal length 0'
@@ -492,13 +492,16 @@ class Terminal(object):
         #       rather then return an error meesage
         #       leaving the script to handle the exception
         #    I don't think I can make it 'wrappable' via 'with' context manager
+        debug_display_info(debug=self.debug)
         if not send:
             result = '[SEND=FALSE] {0}'.format(command)
         else:
+            # Setting Options
             if prompt is None:
                 prompt = self.prompt
             if timeout is None:
                 timeout = self.timeout
+            # Banner Checking
             if command.lstrip().startswith('banner'):
                 if len(command.lstrip().split()) > 2:
                     self.banner = command.lstrip().split()[2][0]
@@ -511,21 +514,25 @@ class Terminal(object):
                         self.banner = False
                         debug_message = 'banner delimeter found in banner statement.'
                         debug_display_info(debug=self.debug, message=debug_message)
+            # Banner Checking
             if self.banner:        
                 timeout = 0.2
                 debug_message = 'banner timeout set to {0} seconds.'.format(timeout)
                 debug_display_info(debug=self.debug, message=debug_message)
-            debug_display_info(debug=self.debug)
+            # Write to the terminal
             self.write(command)
+            # Read back from the terminal
             result = u''
             if not command == '':
                 result = self.read_until(command[0:20], timeout=3)
             result += self.read_until_regex(prompt, timeout)
+            # Disable banner mode
             if self.banner:
                 if self.prompt_matched or command.lstrip().startswith(self.banner):
                     self.banner = False
                     debug_message = 'banner mode off -- matched prompt or delimeter.'
                     debug_display_info(debug=self.debug, message=debug_message)
+        # Return the result as a list.
         return result.splitlines()
 
     def set_logging(self, filename, mode=None):
