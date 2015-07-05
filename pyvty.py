@@ -29,8 +29,6 @@ class Session(host, port, username, password, protocol)
 
 TO DO LIST:
 send - "exit" hangs until timeout on ssh (generates EOFError eception on telnet.
-config mode should accept a list and then exit config mode
-maybe send should be write, and send_command should be send
 
 change allow_configuration to diable config
 change configure to use a list (or docstring)
@@ -276,6 +274,7 @@ class Terminal(object):
             self.terminal = Telnet(self.host, **hostdict)
             self.login(self.username, self.password)
         if self.platform == 'cisco':
+            self.enable_privilege()
             self.send(self.disable_paging)
         return True
 
@@ -334,7 +333,7 @@ class Terminal(object):
             output, self.data_buffer = self.data_buffer, u''
         return output
 
-    def enable_mode(self, command="enable", password=None):
+    def enable_privilege(self, command="enable", password=None):
         """Elevate privilege level from read-only to read-write
         
         Also called 'enable mode'.
@@ -349,6 +348,8 @@ class Terminal(object):
         if password is None:
             password = self.password
         prompt = r'^\w[\w\(\)]+ ?[\>\$\#] ?$|[Pp]assword:? ?$'
+        #self.write('')
+        #self.read_until_regex(prompt)
         self.write(command)
         self.read_until_regex(prompt)
         current_match = self.last_regex_match
@@ -433,6 +434,7 @@ class Terminal(object):
         Timeout counter is reset whenever new data appears on terminal.
         If timeout occurs, self.last_regex_match will keep previous value.
         """
+        ###  Should check if terminal closed, and then return the buffer.
         debug_display_info(debug=self.debug)
         debug_display_info(debug=self.debug, message='match = {0}'.format(match))
         if timeout is None:
@@ -523,8 +525,8 @@ class Terminal(object):
             self.write(command)
             # Read back from the terminal
             result = u''
-            if not command == '':
-                result = self.read_until(command[0:20], timeout=3)
+            if command != '':
+                result = self.read_until(command.splitlines()[0][0:20], timeout=3)
             result += self.read_until_regex(prompt, timeout)
             # Disable banner mode
             if self.banner:
