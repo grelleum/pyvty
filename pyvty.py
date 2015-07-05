@@ -20,6 +20,7 @@ import telnetlib    # telnet library
 import time         # used for time.sleep
 import traceback    # provides exception traceback data
 
+version = '0.7.0'
 
 """
 Usage:
@@ -237,6 +238,8 @@ class Terminal(object):
         self.terminal = None
         self.data_buffer = u''
         self.last_regex_match = u''
+        self.banner = False
+        self.prompt_matched = False
         self.timeout = 20
         self.prompt = r'[\r\n](\w[\w\-\:\.]+ ?(\(\w[\w\-\:\.]+\) )?[\>\$\#\%] ?)$'
         self.logfile = self.kwargs.get('logfile', None)
@@ -298,13 +301,16 @@ class Terminal(object):
         auth_fail = r'Authentication failed'
 
         self.read_until_regex(r'|'.join((self.prompt, login_prompt)))
-        debug_display_info(debug=self.debug, message='LAST MATCH = {0}'.format(self.last_regex_match))
+        debug_message = 'LAST MATCH = {0}'.format(self.last_regex_match)
+        debug_display_info(debug=self.debug, message=debug_message)
         if re.search(self.prompt, self.last_regex_match):
-            debug_display_info(debug=self.debug, message='LEAVING LOGIN -- ALREADY LOGGED IN!')
+            debug_message = 'LEAVING LOGIN -- ALREADY LOGGED IN!'
+            debug_display_info(debug=self.debug, message=debug_message)
             return True
         self.write(username)
         self.read_until_regex(password_prompt)
-        debug_display_info(debug=self.debug, message='LAST MATCH = {0}'.format(self.last_regex_match))
+        debug_message = 'LAST MATCH = {0}'.format(self.last_regex_match)
+        debug_display_info(debug=self.debug, message=debug_message)
         self.write(password)
         self.read_until_regex(r'|'.join((self.prompt, login_prompt, auth_fail)))
         if re.search(r'|'.join((login_prompt, auth_fail)), self.last_regex_match):
@@ -337,6 +343,8 @@ class Terminal(object):
         Sends the command 'enable' by default.
         Use privilege_command='enable'
         """
+        ###  FIX ENABLE PROMPT
+        ###  FOR RIOS COMPATIBILITY
         debug_display_info(debug=self.debug)
         if password is None:
             password = self.password
@@ -371,7 +379,7 @@ class Terminal(object):
         while this_delay <= max_delay:
             received_data = self.terminal._read()
             if received_data:
-                self.write_log(received_data, prefix='')
+                self.write_to_log(received_data, prefix='')
                 result = True
                 self.data_buffer += received_data
                 this_delay = self.read_delay
@@ -437,6 +445,7 @@ class Terminal(object):
                 end_time = time.time() + timeout
             regex_match = regex.search(self.data_buffer)
             if regex_match:
+                self.prompt_matched = True
                 self.last_regex_match = regex_match.group()
                 split_up = regex.split(self.data_buffer, 1)
                 (output, post_match) = split_up[0], split_up[-1]
@@ -446,7 +455,9 @@ class Terminal(object):
                 time.sleep(0.1)
         # Reached timeout at this point: should I raise an exception?
         # Should I overwrite self.last_regex_match? 
-        print('%%% Timed out after {0} seconds.'.format(timeout), file=sys.stderr)
+        self.prompt_matched = False
+        debug_message = '%%% Timed out after {0} seconds.'.format(timeout)
+        debug_display_info(debug=self.debug, message=debug_message)
         output = self.data_buffer
         self.flush_buffer()
         return output
@@ -476,7 +487,11 @@ class Terminal(object):
         useful when you want to verify what will be sent before sending.
         """
         # FIX ME : should return immediately upon exception:
-        #           send---exception: Socket is closed
+        #       send---exception: Socket is closed
+        #   HMMM - should just raise the exception
+        #       rather then return an error meesage
+        #       leaving the script to handle the exception
+        #    I don't think I can make it 'wrappable' via 'with' context manager
         if not send:
             result = '[SEND=FALSE] {0}'.format(command)
         else:
@@ -484,12 +499,33 @@ class Terminal(object):
                 prompt = self.prompt
             if timeout is None:
                 timeout = self.timeout
+            if command.lstrip().startswith('banner'):
+                if len(command.lstrip().split()) > 2:
+                    self.banner = command.lstrip().split()[2][0]
+                else:
+                    self.banner = command.lstrip().split()[-1][0]
+                debug_message = 'banner delimeter = {0}'.format(self.banner)
+                debug_display_info(debug=self.debug, message=debug_message)
+                if len(command.lstrip().split()) > 3:
+                    if self.banner == command.lstrip().split()[-1][-1]:
+                        self.banner = False
+                        debug_message = 'banner delimeter found in banner statement.'
+                        debug_display_info(debug=self.debug, message=debug_message)
+            if self.banner:        
+                timeout = 0.2
+                debug_message = 'banner timeout set to {0} seconds.'.format(timeout)
+                debug_display_info(debug=self.debug, message=debug_message)
             debug_display_info(debug=self.debug)
             self.write(command)
             result = u''
             if not command == '':
                 result = self.read_until(command[0:20], timeout=3)
             result += self.read_until_regex(prompt, timeout)
+            if self.banner:
+                if self.prompt_matched or command.lstrip().startswith(self.banner):
+                    self.banner = False
+                    debug_message = 'banner mode off -- matched prompt or delimeter.'
+                    debug_display_info(debug=self.debug, message=debug_message)
         return result.splitlines()
 
     def set_logging(self, filename, mode=None):
@@ -509,7 +545,7 @@ class Terminal(object):
             with open(filename, mode) as logfile:
                 self.logfile = filename
 
-    def write_log(self, output, prefix=None):
+    def write_to_log(self, output, prefix=None):
         """Writes string to the current logging file if logging is enabled
         
         Accepts a string.
@@ -570,7 +606,7 @@ class SSH(object):
                 self.client.close()
                 return True
             except self.terminal_exceptions as terminal_exception:
-                print("close---exception: %s" % str(terminal_exception), file=sys.stderr)  ###
+                print("terminal_close_exception: %s" % str(terminal_exception), file=sys.stderr)  ###
                 return False
 
     def _read(self):
@@ -582,7 +618,7 @@ class SSH(object):
                 read_buffer += self.terminal.recv(16384)
             return read_buffer.decode()
         except self.terminal_exceptions as terminal_exception:
-            print("read---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
+            print("terminal_read_exception: %s" % str(terminal_exception), file=sys.stderr)   ###
             return str(terminal_exception)
 
     def _write(self, text):
@@ -593,7 +629,7 @@ class SSH(object):
             self.terminal.send(text)
             return True
         except self.terminal_exceptions as terminal_exception:
-            print("send---exception: %s" % str(terminal_exception), file=sys.stderr)   ###
+            print("terminal_write_exception: %s" % str(terminal_exception), file=sys.stderr)   ###
             return False
 
 
@@ -620,35 +656,37 @@ class Telnet(object):
             self.terminal.close()
         except exceptions as exception:
             debug_display_info(debug=self.debug,
-                message="close---exception: {0}".format(exception))
+                message="terminal_close_exception: {0}".format(exception))
             return False
 
     def _read(self):
         """Internal method to get output from Telnet session."""
+        ### ADD EXCEPTION ###
         debug_display_info(debug=self.debug)
         read_buffer = self.terminal.read_very_eager()
         return read_buffer.decode()
 
     def _write(self, text):
         """Internal method to send string to Telnet session."""
+        ### ADD EXCEPTION ###
         debug_display_info(debug=self.debug)
         self.terminal.write(text.encode())
         return True
 
 
 
-def send(command, prompt=None, timeout=None, send=True):
+def send(terminal, command, prompt=None, timeout=None, send=True):
     if prompt is None:
-        prompt = term.prompt
+        prompt = terminal.prompt
     if timeout is None:
-        timeout = term.timeout
-    term.write(command)
+        timeout = terminal.timeout
+    terminal.write(command)
     result = u''
     if not command == '':
         mycopy = command
         if '"' in command:
             mycopy = command.split('"')[0]
-        result = term.read_until(mycopy, timeout=3)
-    result += term.read_until_regex(prompt, timeout)
+        result = terminal.read_until(mycopy, timeout=3)
+    result += terminal.read_until_regex(prompt, timeout)
     return result.splitlines()
 
