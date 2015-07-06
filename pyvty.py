@@ -20,7 +20,7 @@ import telnetlib    # telnet library
 import time         # used for time.sleep
 import traceback    # provides exception traceback data
 
-version = '0.7.0'
+version = '0.7.1'
 
 """
 Usage:
@@ -196,12 +196,7 @@ class Terminal(object):
     compex, common methods.  The child classes will inherit this logic.
     """
 
-    def __init__(self, 
-            host, 
-            port=None, 
-            protocol=None, 
-            **kwargs
-            ):
+    def __init__(self, host, port=None, protocol=None, **kwargs):
         global debug_level
         self.debug = kwargs.get('debug', 0)
         debug_level = self.debug
@@ -219,7 +214,7 @@ class Terminal(object):
         self.connect()
 
     def __iter__(self):
-        """Not really sure this class need to be iterable.
+        """Not really sure this class needs to be iterable.
         It was a good coding excercise, might have added some complexity 
         to the update buffer method in the fine-tuning delays 
         and trying to detect when no more buffer will be sent.
@@ -477,7 +472,7 @@ class Terminal(object):
         time.sleep(self.send_delay)
         return result
 
-    def send(self, command, prompt=None, timeout=None, send=True):
+    def send(self, command, prompt=None, timeout=None, send=True, end='\n'):
         """Sends a command to the terminal and waits for the prompt to return.
         
         Returns a string of output from the terminal.
@@ -522,7 +517,7 @@ class Terminal(object):
                 debug_message = 'banner timeout set to {0} seconds.'.format(timeout)
                 debug_display_info(debug=self.debug, message=debug_message)
             # Write to the terminal
-            self.write(command)
+            self.write(command, end='\n')
             # Read back from the terminal
             result = u''
             if command != '':
@@ -681,21 +676,4 @@ class Telnet(object):
         debug_display_info(debug=self.debug)
         self.terminal.write(text.encode())
         return True
-
-
-
-def send(terminal, command, prompt=None, timeout=None, send=True):
-    if prompt is None:
-        prompt = terminal.prompt
-    if timeout is None:
-        timeout = terminal.timeout
-    terminal.write(command)
-    result = u''
-    if not command == '':
-        mycopy = command
-        if '"' in command:
-            mycopy = command.split('"')[0]
-        result = terminal.read_until(mycopy, timeout=3)
-    result += terminal.read_until_regex(prompt, timeout)
-    return result.splitlines()
 
