@@ -337,8 +337,6 @@ class Terminal(object):
         Sends the command 'enable' by default.
         Use privilege_command='enable'
         """
-        ###  FIX ENABLE PROMPT
-        ###  FOR RIOS COMPATIBILITY
         debug_display_info(debug=self.debug)
         if password is None:
             password = self.password
@@ -472,6 +470,51 @@ class Terminal(object):
         time.sleep(self.send_delay)
         return result
 
+    def _send_main(self, command, prompt, timeout, end):
+        """Sends a command to the terminal and waits for the prompt to return."""
+        # FIX ME : should return immediately upon exception:
+        #       send---exception: Socket is closed
+        #   HMMM - should just raise the exception
+        #       rather then return an error meesage
+        #       leaving the script to handle the exception
+        #    I don't think I can make it 'wrappable' via 'with' context manager
+        debug_display_info(debug=self.debug)
+        
+        # Banner Checking
+        if command.lstrip().startswith('banner'):
+            if len(command.lstrip().split()) > 2:
+                self.banner = command.lstrip().split()[2][0]
+            else:
+                self.banner = command.lstrip().split()[-1][0]
+            debug_message = 'banner delimeter = {0}'.format(self.banner)
+            debug_display_info(debug=self.debug, message=debug_message)
+            if len(command.lstrip().split()) > 3:
+                if self.banner == command.lstrip().split()[-1][-1]:
+                    self.banner = False
+                    debug_message = 'banner delimeter found in banner statement.'
+                    debug_display_info(debug=self.debug, message=debug_message)
+        # Banner Checking
+        if self.banner:        
+            timeout = 0.2
+            debug_message = 'banner timeout set to {0} seconds.'.format(timeout)
+            debug_display_info(debug=self.debug, message=debug_message)
+        
+        # Write to the terminal
+        self.write(command, end='\n')
+        # Read back from the terminal
+        result = u''
+        if command != '':
+            result = self.read_until(command.splitlines()[0][0:20], timeout=3)
+        result += self.read_until_regex(prompt, timeout)
+        
+        # Disable banner mode
+        if self.banner:
+            if self.prompt_matched or command.lstrip().startswith(self.banner):
+                self.banner = False
+                debug_message = 'banner mode off -- matched prompt or delimeter.'
+                debug_display_info(debug=self.debug, message=debug_message)
+        return result
+
     def send(self, command, prompt=None, timeout=None, send=True, end='\n'):
         """Sends a command to the terminal and waits for the prompt to return.
         
@@ -483,53 +526,15 @@ class Terminal(object):
         Optional send=False prevents the string from being sent.  This is
         useful when you want to verify what will be sent before sending.
         """
-        # FIX ME : should return immediately upon exception:
-        #       send---exception: Socket is closed
-        #   HMMM - should just raise the exception
-        #       rather then return an error meesage
-        #       leaving the script to handle the exception
-        #    I don't think I can make it 'wrappable' via 'with' context manager
         debug_display_info(debug=self.debug)
         if not send:
             result = '[SEND=FALSE] {0}'.format(command)
         else:
-            # Setting Options
             if prompt is None:
                 prompt = self.prompt
             if timeout is None:
                 timeout = self.timeout
-            # Banner Checking
-            if command.lstrip().startswith('banner'):
-                if len(command.lstrip().split()) > 2:
-                    self.banner = command.lstrip().split()[2][0]
-                else:
-                    self.banner = command.lstrip().split()[-1][0]
-                debug_message = 'banner delimeter = {0}'.format(self.banner)
-                debug_display_info(debug=self.debug, message=debug_message)
-                if len(command.lstrip().split()) > 3:
-                    if self.banner == command.lstrip().split()[-1][-1]:
-                        self.banner = False
-                        debug_message = 'banner delimeter found in banner statement.'
-                        debug_display_info(debug=self.debug, message=debug_message)
-            # Banner Checking
-            if self.banner:        
-                timeout = 0.2
-                debug_message = 'banner timeout set to {0} seconds.'.format(timeout)
-                debug_display_info(debug=self.debug, message=debug_message)
-            # Write to the terminal
-            self.write(command, end='\n')
-            # Read back from the terminal
-            result = u''
-            if command != '':
-                result = self.read_until(command.splitlines()[0][0:20], timeout=3)
-            result += self.read_until_regex(prompt, timeout)
-            # Disable banner mode
-            if self.banner:
-                if self.prompt_matched or command.lstrip().startswith(self.banner):
-                    self.banner = False
-                    debug_message = 'banner mode off -- matched prompt or delimeter.'
-                    debug_display_info(debug=self.debug, message=debug_message)
-        # Return the result as a list.
+            result = self._send_main(command, prompt=prompt, timeout=timeout, end=end)
         return result.splitlines()
 
     def set_logging(self, filename, mode=None):
